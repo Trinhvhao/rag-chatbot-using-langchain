@@ -1,7 +1,7 @@
 import requests
 import streamlit as st
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:9990"
 
 def get_api_response(question, session_id, model):
     """Gửi câu hỏi tới backend"""

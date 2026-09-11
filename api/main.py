@@ -1,17 +1,21 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic_models import QueryInput, QueryResponse, DocumentInfo, DeleteFileRequest
-# ✅ Đổi import sang file langchain_utils đã dùng Gemini
 from langchain_utils import get_rag_chain
-from db_utils import insert_application_logs, get_chat_history, get_all_documents, insert_document_record, delete_document_record
+from db_utils import (
+    insert_application_logs, get_chat_history, get_all_documents,
+    insert_document_record, delete_document_record
+)
 from chroma_utils import index_document_to_chroma, delete_doc_from_chroma
 import os
 import uuid
 import logging
-import shutil  # ⚠️ thiếu import này trong bản gốc, cần thêm để copy file
+import shutil
+import uvicorn  # ✅ thêm uvicorn để chạy app
 
 logging.basicConfig(filename='app.log', level=logging.INFO)
 
 app = FastAPI()
+
 
 @app.post("/chat", response_model=QueryResponse)
 def chat(query_input: QueryInput):
@@ -20,19 +24,14 @@ def chat(query_input: QueryInput):
     if not session_id:
         session_id = str(uuid.uuid4())
 
-    # lấy lịch sử chat
     chat_history = get_chat_history(session_id)
-
-    # ✅ lấy chain Gemini (trong langchain_utils.py đã đổi sang ChatGoogleGenerativeAI)
     rag_chain = get_rag_chain(query_input.model.value)
 
-    # gọi chain
     answer = rag_chain.invoke({
         "input": query_input.question,
         "chat_history": chat_history
     })['answer']
     
-    # lưu log
     insert_application_logs(session_id, query_input.question, answer, query_input.model.value)
     logging.info(f"Session ID: {session_id}, AI Response: {answer}")
 
@@ -50,7 +49,6 @@ def upload_and_index_document(file: UploadFile = File(...)):
     temp_file_path = f"temp_{file.filename}"
     
     try:
-        # Save the uploaded file to a temporary file
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
@@ -84,3 +82,14 @@ def delete_document(request: DeleteFileRequest):
             return {"error": f"Deleted from Chroma but failed to delete document with file_id {request.file_id} from the database."}
     else:
         return {"error": f"Failed to delete document with file_id {request.file_id} from Chroma."}
+
+
+# ✅ Thêm đoạn này để chạy server bằng uvicorn
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=9990,
+        reload=True
+    )
